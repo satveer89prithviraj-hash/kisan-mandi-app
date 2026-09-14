@@ -13,15 +13,57 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      - name: Check Android project ZIP
+        run: |
+          ZIP_FILE=$(find . -maxdepth 1 -type f \
+            -name 'kisan_mandi_final_android_cloud_build_v20.zip' \
+            -print -quit)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: Android project ZIP file not found."
+            exit 1
+          fi
+
+          echo "ZIP_FILE=$ZIP_FILE"
+
       - name: Extract Android project ZIP
         run: |
+          rm -rf build_src
           mkdir -p build_src
-          ZIP_FILE=$(find . -maxdepth 1 -name 'kisan_mandi_final_android_cloud_build_v20.zip' -print -quit)
+
+          ZIP_FILE=$(find . -maxdepth 1 -type f \
+            -name 'kisan_mandi_final_android_cloud_build_v20.zip' \
+            -print -quit)
+
           unzip -q "$ZIP_FILE" -d build_src
+
+          echo "Extracted project files:"
+          find build_src -maxdepth 3 -type f | head -100
 
       - name: Find Android project
         run: |
-          PROJECT_DIR=$(dirname "$(find build_src -type f -name 'settings.gradle' -print -quit)")
+          PROJECT_DIR=""
+
+          SETTINGS_FILE=$(find build_src -type f \
+            \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) \
+            -print -quit)
+
+          if [ -n "$SETTINGS_FILE" ]; then
+            PROJECT_DIR=$(dirname "$SETTINGS_FILE")
+          fi
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: Android Gradle project not found."
+            echo "Searching for Gradle files..."
+            find build_src -type f \
+              \( -name 'build.gradle' -o -name 'build.gradle.kts' \) \
+              -print
+            exit 1
+          fi
+
+          echo "Android project found at:"
+          echo "$PROJECT_DIR"
+
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Set up Java
@@ -35,13 +77,54 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
+      - name: Check Android project
+        run: |
+          cd "$PROJECT_DIR"
+
+          echo "Project directory:"
+          pwd
+
+          echo "Project files:"
+          ls -la
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            echo "Gradle wrapper found."
+            ./gradlew --version
+          else
+            echo "Gradle wrapper not found."
+            echo "System Gradle will be used."
+            gradle --version
+          fi
+
       - name: Build Android AAB
         run: |
           cd "$PROJECT_DIR"
-          gradle :app:bundleRelease
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew :app:bundleRelease --no-daemon
+          else
+            gradle :app:bundleRelease --no-daemon
+          fi
+
+      - name: Verify AAB
+        run: |
+          AAB_FILE="$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab"
+
+          if [ ! -f "$AAB_FILE" ]; then
+            echo "ERROR: Release AAB was not generated."
+            echo "Searching generated files:"
+            find "$PROJECT_DIR/app/build/outputs" -type f 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "AAB successfully generated:"
+          ls -lh "$AAB_FILE"
 
       - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
           name: kisan-mandi-release-aab
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
