@@ -85,7 +85,6 @@ jobs:
                   tasks.withType(JavaCompile).configureEach {
                       sourceCompatibility = "17"
                       targetCompatibility = "17"
-                      options.release = 17
                   }
 
                   tasks.configureEach { task ->
