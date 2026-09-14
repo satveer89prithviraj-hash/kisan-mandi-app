@@ -36,7 +36,6 @@ jobs:
             -print -quit)
 
           unzip -q "$ZIP_FILE" -d build_src
-
           echo "Android project extracted successfully."
 
       - name: Find Android project
@@ -75,29 +74,58 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
-      - name: Create JVM 17 compatibility fix
+      - name: Fix Android Java and Kotlin JVM targets
         run: |
-          cat > "$RUNNER_TEMP/force-jvm17.init.gradle" <<'EOF'
-          import org.gradle.api.tasks.compile.JavaCompile
+          cd "$PROJECT_DIR"
 
-          allprojects {
-              afterEvaluate {
-                  tasks.withType(JavaCompile).configureEach {
-                      sourceCompatibility = "17"
-                      targetCompatibility = "17"
-                  }
+          APP_GRADLE="./app/build.gradle"
 
-                  tasks.configureEach { task ->
-                      if (task.name.toLowerCase().contains("kotlin") &&
-                          task.hasProperty("kotlinOptions")) {
-                          task.kotlinOptions.jvmTarget = "17"
-                      }
-                  }
+          if [ ! -f "$APP_GRADLE" ]; then
+            echo "ERROR: app/build.gradle not found."
+            find . -maxdepth 4 -type f -name 'build.gradle' -print
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("app/build.gradle")
+          text = path.read_text()
+
+          if "compileOptions {" not in text:
+              marker = "android {\n"
+              fix = """android {
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
               }
-          }
-          EOF
 
-          echo "JVM 17 compatibility fix created."
+              kotlinOptions {
+                  jvmTarget = '17'
+              }
+          """
+              if marker not in text:
+                  raise SystemExit("android block not found")
+              text = text.replace(marker, fix, 1)
+
+          elif "jvmTarget = '17'" not in text and "kotlinOptions {" not in text:
+              marker = "}\n\ndependencies"
+              fix = """}
+
+          kotlinOptions {
+              jvmTarget = '17'
+          }
+
+          dependencies"""
+              if marker in text:
+                  text = text.replace(marker, fix, 1)
+
+          path.write_text(text)
+          print("Java 17 and Kotlin 17 compatibility settings applied.")
+          PY
+
+          echo "Updated app/build.gradle:"
+          cat app/build.gradle
 
       - name: Check Android project
         run: |
@@ -122,13 +150,9 @@ jobs:
 
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
-            ./gradlew :app:bundleRelease \
-              --no-daemon \
-              --init-script "$RUNNER_TEMP/force-jvm17.init.gradle"
+            ./gradlew :app:bundleRelease --no-daemon
           else
-            gradle :app:bundleRelease \
-              --no-daemon \
-              --init-script "$RUNNER_TEMP/force-jvm17.init.gradle"
+            gradle :app:bundleRelease --no-daemon
           fi
 
       - name: Verify AAB
@@ -137,8 +161,10 @@ jobs:
 
           if [ ! -f "$AAB_FILE" ]; then
             echo "ERROR: Release AAB was not generated."
+
             echo "Searching generated files:"
             find "$PROJECT_DIR/app/build/outputs" -type f 2>/dev/null || true
+
             exit 1
           fi
 
