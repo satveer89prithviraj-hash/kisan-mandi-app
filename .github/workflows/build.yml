@@ -2,8 +2,12 @@ name: Kisan Mandi Android Cloud Build
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -13,54 +17,50 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Check Android project ZIP
+      - name: Check V2 ZIP
+        shell: bash
         run: |
-          ZIP_FILE=$(find . -maxdepth 1 -type f \
-            -name 'kisan_mandi_v2.zip'
-            -print -quit)
+          ZIP_FILE="$GITHUB_WORKSPACE/kisan_mandi_v2.zip"
 
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: Android project ZIP file not found."
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "ERROR: kisan_mandi_v2.zip not found"
             exit 1
           fi
 
-          echo "ZIP_FILE=$ZIP_FILE"
+          echo "V2 ZIP found successfully."
+          ls -lh "$ZIP_FILE"
 
-      - name: Extract Android project ZIP
+      - name: Extract V2 Android project
+        shell: bash
         run: |
-          rm -rf build_src
-          mkdir -p build_src
+          rm -rf "$GITHUB_WORKSPACE/build_src"
+          mkdir -p "$GITHUB_WORKSPACE/build_src"
 
-          ZIP_FILE=$(find . -maxdepth 1 -type f \
-            -name 'kisan_mandi_v2.zip'
-            -print -quit)
+          unzip -q "$GITHUB_WORKSPACE/kisan_mandi_v2.zip" \
+            -d "$GITHUB_WORKSPACE/build_src"
 
-          unzip -q "$ZIP_FILE" -d build_src
-          echo "Android project extracted successfully."
+          echo "V2 Android project extracted successfully."
+          echo "Project files:"
+          ls -la "$GITHUB_WORKSPACE/build_src"
 
-      - name: Find Android project
+      - name: Check Android project
+        shell: bash
         run: |
-          PROJECT_DIR=""
+          PROJECT_DIR="$GITHUB_WORKSPACE/build_src"
 
-          SETTINGS_FILE=$(find build_src -type f \
-            \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) \
-            -print -quit)
-
-          if [ -n "$SETTINGS_FILE" ]; then
-            PROJECT_DIR=$(dirname "$SETTINGS_FILE")
-          fi
-
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: Android Gradle project not found."
-            find build_src -type f \
-              \( -name 'build.gradle' -o -name 'build.gradle.kts' \) \
-              -print
+          if [ ! -f "$PROJECT_DIR/settings.gradle" ]; then
+            echo "ERROR: settings.gradle not found."
+            echo "Files inside build_src:"
+            ls -la "$PROJECT_DIR"
             exit 1
           fi
 
-          echo "Android project found at:"
-          echo "$PROJECT_DIR"
+          if [ ! -f "$PROJECT_DIR/app/build.gradle" ]; then
+            echo "ERROR: app/build.gradle not found."
+            exit 1
+          fi
 
+          echo "Android project is valid."
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Set up Java 17
@@ -74,101 +74,32 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
-      - name: Fix Android Java and Kotlin JVM targets
+      - name: Show build environment
+        shell: bash
         run: |
-          cd "$PROJECT_DIR"
-
-          APP_GRADLE="./app/build.gradle"
-
-          if [ ! -f "$APP_GRADLE" ]; then
-            echo "ERROR: app/build.gradle not found."
-            find . -maxdepth 4 -type f -name 'build.gradle' -print
-            exit 1
-          fi
-
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path("app/build.gradle")
-          text = path.read_text()
-
-          if "compileOptions {" not in text:
-              marker = "android {\n"
-              fix = """android {
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_17
-                  targetCompatibility JavaVersion.VERSION_17
-              }
-
-              kotlinOptions {
-                  jvmTarget = '17'
-              }
-          """
-              if marker not in text:
-                  raise SystemExit("android block not found")
-              text = text.replace(marker, fix, 1)
-
-          elif "jvmTarget = '17'" not in text and "kotlinOptions {" not in text:
-              marker = "}\n\ndependencies"
-              fix = """}
-
-          kotlinOptions {
-              jvmTarget = '17'
-          }
-
-          dependencies"""
-              if marker in text:
-                  text = text.replace(marker, fix, 1)
-
-          path.write_text(text)
-          print("Java 17 and Kotlin 17 compatibility settings applied.")
-          PY
-
-          echo "Updated app/build.gradle:"
-          cat app/build.gradle
-
-      - name: Check Android project
-        run: |
-          cd "$PROJECT_DIR"
-
-          echo "Project directory:"
-          pwd
-
-          echo "Project files:"
-          ls -la
-
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-            ./gradlew --version
-          else
-            gradle --version
-          fi
+          java -version
+          gradle --version
+          echo "Project: $PROJECT_DIR"
 
       - name: Build Android AAB
+        shell: bash
         run: |
           cd "$PROJECT_DIR"
-
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
-            ./gradlew :app:bundleRelease --no-daemon
-          else
-            gradle :app:bundleRelease --no-daemon
-          fi
+          gradle :app:bundleRelease --no-daemon
 
       - name: Verify AAB
+        shell: bash
         run: |
           AAB_FILE="$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab"
 
           if [ ! -f "$AAB_FILE" ]; then
             echo "ERROR: Release AAB was not generated."
-
-            echo "Searching generated files:"
+            echo "Build output:"
             find "$PROJECT_DIR/app/build/outputs" -type f 2>/dev/null || true
-
             exit 1
           fi
 
-          echo "AAB successfully generated:"
+          echo "AAB generated successfully:"
           ls -lh "$AAB_FILE"
 
       - name: Upload AAB
