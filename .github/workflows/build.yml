@@ -21,10 +21,10 @@ jobs:
       - name: Check KM ZIP
         shell: bash
         run: |
-          if [ ! -f "$GITHUB_WORKSPACE/KM.zip" ]; then
+          test -f "$GITHUB_WORKSPACE/KM.zip" || {
             echo "ERROR: KM.zip not found"
             exit 1
-          fi
+          }
 
           echo "KM.zip found successfully."
 
@@ -69,25 +69,31 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
-      - name: Prepare production signing key
+      - name: Prepare upload signing key
         shell: bash
         env:
-          KISAN_KEYSTORE_B64: ${{ secrets.KISAN_KEYSTORE_B64 }}
+          KEYSTORE_B64: ${{ secrets.KISAN_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KISAN_KEYSTORE_PASSWORD }}
         run: |
-          if [ -z "$KISAN_KEYSTORE_B64" ]; then
+          if [ -z "$KEYSTORE_B64" ]; then
             echo "ERROR: KISAN_KEYSTORE_B64 secret is missing."
             exit 1
           fi
 
-          echo "$KISAN_KEYSTORE_B64" | base64 -d \
-            > "$RUNNER_TEMP/kisan-mandi-production-2026.p12"
-
-          if [ ! -s "$RUNNER_TEMP/kisan-mandi-production-2026.p12" ]; then
-            echo "ERROR: Signing keystore could not be created."
+          if [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "ERROR: KISAN_KEYSTORE_PASSWORD secret is missing."
             exit 1
           fi
 
-          echo "Production signing key prepared."
+          echo "$KEYSTORE_B64" | base64 -d \
+            > "$RUNNER_TEMP/kisan-mandi-upload-2026.p12"
+
+          if [ ! -s "$RUNNER_TEMP/kisan-mandi-upload-2026.p12" ]; then
+            echo "ERROR: Upload keystore could not be created."
+            exit 1
+          fi
+
+          echo "Upload signing key prepared successfully."
 
       - name: Build release AAB
         shell: bash
@@ -106,25 +112,19 @@ jobs:
             exit 1
           fi
 
-          echo "Release AAB generated."
+          echo "Release AAB generated successfully."
           ls -lh "$AAB"
 
-      - name: Sign AAB
+      - name: Sign release AAB
         shell: bash
         env:
-          STORE_PASS: ${{ secrets.KISAN_KEYSTORE_PASSWORD }}
-          KEY_PASS: ${{ secrets.KISAN_KEY_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ secrets.KISAN_KEYSTORE_PASSWORD }}
         run: |
           AAB="$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab"
-          KEYSTORE="$RUNNER_TEMP/kisan-mandi-production-2026.p12"
+          KEYSTORE="$RUNNER_TEMP/kisan-mandi-upload-2026.p12"
 
-          if [ -z "$STORE_PASS" ]; then
+          if [ -z "$KEYSTORE_PASSWORD" ]; then
             echo "ERROR: KISAN_KEYSTORE_PASSWORD secret is missing."
-            exit 1
-          fi
-
-          if [ -z "$KEY_PASS" ]; then
-            echo "ERROR: KISAN_KEY_PASSWORD secret is missing."
             exit 1
           fi
 
@@ -133,25 +133,25 @@ jobs:
           jarsigner \
             -keystore "$KEYSTORE" \
             -storetype PKCS12 \
-            -storepass "$STORE_PASS" \
-            -keypass "$KEY_PASS" \
+            -storepass "$KEYSTORE_PASSWORD" \
+            -keypass "$KEYSTORE_PASSWORD" \
             -sigalg SHA256withRSA \
             -digestalg SHA-256 \
             -signedjar "$RUNNER_TEMP/app-release-signed.aab" \
             "$RUNNER_TEMP/app-release-unsigned.aab" \
-            kisanmandi
+            kisanmandi-upload-2026
 
           cp "$RUNNER_TEMP/app-release-signed.aab" "$AAB"
 
-          echo "AAB signed successfully."
+          echo "Release AAB signed successfully."
 
       - name: Verify AAB signature
         shell: bash
         env:
-          STORE_PASS: ${{ secrets.KISAN_KEYSTORE_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ secrets.KISAN_KEYSTORE_PASSWORD }}
         run: |
           AAB="$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab"
-          KEYSTORE="$RUNNER_TEMP/kisan-mandi-production-2026.p12"
+          KEYSTORE="$RUNNER_TEMP/kisan-mandi-upload-2026.p12"
 
           jarsigner \
             -verify \
@@ -159,13 +159,13 @@ jobs:
             -certs \
             -keystore "$KEYSTORE" \
             -storetype PKCS12 \
-            -storepass "$STORE_PASS" \
+            -storepass "$KEYSTORE_PASSWORD" \
             "$AAB"
 
           echo ""
-          echo "=========================================="
+          echo "=============================================="
           echo "AAB SIGNATURE VERIFIED SUCCESSFULLY"
-          echo "=========================================="
+          echo "=============================================="
 
       - name: Final AAB check
         shell: bash
@@ -175,7 +175,7 @@ jobs:
           echo "Final signed AAB:"
           ls -lh "$AAB"
 
-          echo "Package:"
+          echo "Package information:"
           unzip -l "$AAB" | head -20
 
       - name: Upload signed AAB
