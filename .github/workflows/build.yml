@@ -20,7 +20,7 @@ jobs:
       - name: Check V2 ZIP
         shell: bash
         run: |
-          ZIP_FILE="$GITHUB_WORKSPACE/kisan_mandi_v2_fixed.zip"
+          ZIP_FILE="$GITHUB_WORKSPACE/Kisan_Mandi_com.kisanmandi.india_v1.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
             echo "ERROR: kisan_mandi_v2_fixed.zip not found"
@@ -36,7 +36,7 @@ jobs:
           rm -rf "$GITHUB_WORKSPACE/build_src"
           mkdir -p "$GITHUB_WORKSPACE/build_src"
 
-          unzip -q "$GITHUB_WORKSPACE/kisan_mandi_v2_fixed.zip" \
+          unzip -q "$GITHUB_WORKSPACE/Kisan_Mandi_com.kisanmandi.india_v1.zip" \
             -d "$GITHUB_WORKSPACE/build_src"
 
           echo "V2 Android project extracted successfully."
