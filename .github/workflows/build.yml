@@ -81,12 +81,23 @@ jobs:
           gradle --version
           echo "Project: $PROJECT_DIR"
 
-      - name: Build Android AAB
-        shell: bash
-        run: |
-          cd "$PROJECT_DIR"
-          gradle :app:bundleRelease --no-daemon
+      - name: Prepare signing key
+  shell: bash
+  env:
+    KISAN_KEYSTORE_B64: ${{ secrets.KISAN_KEYSTORE_B64 }}
+  run: |
+    echo "$KISAN_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/kisan-mandi-production-2026.p12"
 
+- name: Build Android AAB
+  shell: bash
+  env:
+    KISAN_KEYSTORE: ${{ runner.temp }}/kisan-mandi-production-2026.p12
+    KISAN_KEYSTORE_PASSWORD: ${{ secrets.KISAN_KEYSTORE_PASSWORD }}
+    KISAN_KEY_ALIAS: kisanmandi
+    KISAN_KEY_PASSWORD: ${{ secrets.KISAN_KEY_PASSWORD }}
+  run: |
+    cd "$PROJECT_DIR"
+    gradle :app:bundleRelease --no-daemon
       - name: Verify AAB
         shell: bash
         run: |
