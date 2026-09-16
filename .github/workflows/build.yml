@@ -15,33 +15,26 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
-      - name: Check V2 ZIP
+      - name: Check KM ZIP
         shell: bash
         run: |
-          ZIP_FILE="$GITHUB_WORKSPACE/Kisan_Mandi_com.kisanmandi.india_v1.zip"
-
+          ZIP_FILE="$GITHUB_WORKSPACE/KM.zip"
           if [ ! -f "$ZIP_FILE" ]; then
-            echo "ERROR: kisan_mandi_v2_fixed.zip not found"
+            echo "ERROR: KM.zip not found"
             exit 1
           fi
+          echo "KM.zip found successfully."
 
-          echo "V2 ZIP found successfully."
-          ls -lh "$ZIP_FILE"
-
-      - name: Extract V2 Android project
+      - name: Extract Android project
         shell: bash
         run: |
           rm -rf "$GITHUB_WORKSPACE/build_src"
           mkdir -p "$GITHUB_WORKSPACE/build_src"
-
-          unzip -q "$GITHUB_WORKSPACE/Kisan_Mandi_com.kisanmandi.india_v1.zip" \
+          unzip -q "$GITHUB_WORKSPACE/KM.zip" \
             -d "$GITHUB_WORKSPACE/build_src"
-
-          echo "V2 Android project extracted successfully."
-          echo "Project files:"
-          ls -la "$GITHUB_WORKSPACE/build_src"
+          echo "Android project extracted successfully."
 
       - name: Check Android project
         shell: bash
@@ -50,8 +43,6 @@ jobs:
 
           if [ ! -f "$PROJECT_DIR/settings.gradle" ]; then
             echo "ERROR: settings.gradle not found."
-            echo "Files inside build_src:"
-            ls -la "$PROJECT_DIR"
             exit 1
           fi
 
@@ -82,22 +73,23 @@ jobs:
           echo "Project: $PROJECT_DIR"
 
       - name: Prepare signing key
-  shell: bash
-  env:
-    KISAN_KEYSTORE_B64: ${{ secrets.KISAN_KEYSTORE_B64 }}
-  run: |
-    echo "$KISAN_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/kisan-mandi-production-2026.p12"
+        shell: bash
+        env:
+          KISAN_KEYSTORE_B64: ${{ secrets.KISAN_KEYSTORE_B64 }}
+        run: |
+          echo "$KISAN_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/kisan-mandi-production-2026.p12"
 
-- name: Build Android AAB
-  shell: bash
-  env:
-    KISAN_KEYSTORE: ${{ runner.temp }}/kisan-mandi-production-2026.p12
-    KISAN_KEYSTORE_PASSWORD: ${{ secrets.KISAN_KEYSTORE_PASSWORD }}
-    KISAN_KEY_ALIAS: kisanmandi
-    KISAN_KEY_PASSWORD: ${{ secrets.KISAN_KEY_PASSWORD }}
-  run: |
-    cd "$PROJECT_DIR"
-    gradle :app:bundleRelease --no-daemon
+      - name: Build Android AAB
+        shell: bash
+        env:
+          KISAN_KEYSTORE: ${{ runner.temp }}/kisan-mandi-production-2026.p12
+          KISAN_KEYSTORE_PASSWORD: ${{ secrets.KISAN_KEYSTORE_PASSWORD }}
+          KISAN_KEY_ALIAS: kisanmandi
+          KISAN_KEY_PASSWORD: ${{ secrets.KISAN_KEY_PASSWORD }}
+        run: |
+          cd "$PROJECT_DIR"
+          gradle :app:bundleRelease --no-daemon
+
       - name: Verify AAB
         shell: bash
         run: |
@@ -105,12 +97,10 @@ jobs:
 
           if [ ! -f "$AAB_FILE" ]; then
             echo "ERROR: Release AAB was not generated."
-            echo "Build output:"
-            find "$PROJECT_DIR/app/build/outputs" -type f 2>/dev/null || true
             exit 1
           fi
 
-          echo "AAB generated successfully:"
+          echo "AAB generated successfully."
           ls -lh "$AAB_FILE"
 
       - name: Upload AAB
