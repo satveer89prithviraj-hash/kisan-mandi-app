@@ -21,11 +21,10 @@ jobs:
       - name: Check KM ZIP
         shell: bash
         run: |
-          test -f "$GITHUB_WORKSPACE/KM.zip" || {
-            echo "ERROR: KM.zip not found"
+          if [ ! -f "$GITHUB_WORKSPACE/KM.zip" ]; then
+            echo "ERROR: KM.zip not found."
             exit 1
-          }
-
+          fi
           echo "KM.zip found successfully."
 
       - name: Extract Android project
@@ -44,24 +43,21 @@ jobs:
         run: |
           PROJECT_DIR="$GITHUB_WORKSPACE/build_src"
 
-          if [ ! -f "$PROJECT_DIR/settings.gradle" ]; then
-            echo "ERROR: settings.gradle not found"
-            exit 1
+          if [ ! -f "$PROJECT_DIR/settings.gradle" ] && [ ! -f "$PROJECT_DIR/settings.gradle.kts" ]; then
+            PROJECT_DIR=$(find "$GITHUB_WORKSPACE/build_src" -name settings.gradle -o -name settings.gradle.kts | head -1 | xargs dirname)
           fi
 
-          if [ ! -f "$PROJECT_DIR/app/build.gradle" ]; then
-            echo "ERROR: app/build.gradle not found"
+          if [ -z "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/app/build.gradle" ]; then
+            echo "ERROR: Android app/build.gradle not found."
             exit 1
           fi
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Android project found at: $PROJECT_DIR"
 
-          echo "Android project is valid."
-      - name: Force Android 16 release configuration
+      - name: Force Google Play release configuration
         shell: bash
         run: |
-          echo "Setting compileSdk 36, targetSdk 36 and debuggable false..."
-
           cat >> "$PROJECT_DIR/app/build.gradle" <<'EOF'
 
           // Final Google Play release configuration
@@ -69,6 +65,8 @@ jobs:
               compileSdk 36
 
               defaultConfig {
+                  versionCode 3
+                  versionName "1.0.2"
                   targetSdk 36
               }
 
@@ -80,7 +78,8 @@ jobs:
           }
           EOF
 
-          echo "Android 16 / API 36 configuration applied."
+          echo "Version Code 3 / Version 1.0.2 / Target SDK 36 / Release debuggable false applied."
+
       - name: Set up Java 17
         uses: actions/setup-java@v5
         with:
@@ -88,7 +87,7 @@ jobs:
           java-version: '17'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
 
@@ -122,7 +121,6 @@ jobs:
         shell: bash
         run: |
           cd "$PROJECT_DIR"
-
           gradle :app:bundleRelease --no-daemon
 
       - name: Check generated AAB
@@ -186,9 +184,9 @@ jobs:
             "$AAB"
 
           echo ""
-          echo "=============================================="
+          echo "=========================================="
           echo "AAB SIGNATURE VERIFIED SUCCESSFULLY"
-          echo "=============================================="
+          echo "=========================================="
 
       - name: Final AAB check
         shell: bash
@@ -199,7 +197,7 @@ jobs:
           ls -lh "$AAB"
 
           echo "Package information:"
-          unzip -l "$AAB" | head -20
+          unzip -p "$AAB" BUNDLE-METADATA/com.android.tools.build.gradle/app-metadata.properties 2>/dev/null || true
 
       - name: Upload signed AAB
         uses: actions/upload-artifact@v4
