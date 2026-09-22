@@ -205,3 +205,56 @@ jobs:
           name: kisan-mandi-signed-aab
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
+                - name: Install bundletool 1.18.3
+        shell: bash
+        run: |
+          curl -L --fail --retry 3 \
+            -o "$RUNNER_TEMP/bundletool.jar" \
+            https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar
+
+          java -jar "$RUNNER_TEMP/bundletool.jar" version
+
+      - name: Generate installable universal APK
+        shell: bash
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KISAN_KEYSTORE_PASSWORD }}
+        run: |
+          AAB="$PROJECT_DIR/app/build/outputs/bundle/release/app-release.aab"
+          KEYSTORE="$RUNNER_TEMP/kisan-mandi-upload-2026.p12"
+          APKS="$RUNNER_TEMP/kisan-mandi.apks"
+
+          java -jar "$RUNNER_TEMP/bundletool.jar" build-apks \
+            --bundle="$AAB" \
+            --output="$APKS" \
+            --mode=universal \
+            --ks="$KEYSTORE" \
+            --ks-pass="pass:$KEYSTORE_PASSWORD" \
+            --ks-key-alias="kisanmandi-upload-2026" \
+            --key-pass="pass:$KEYSTORE_PASSWORD" \
+            --overwrite
+
+          rm -rf "$RUNNER_TEMP/apks-extracted"
+          mkdir -p "$RUNNER_TEMP/apks-extracted"
+
+          unzip -q "$APKS" universal.apk \
+            -d "$RUNNER_TEMP/apks-extracted"
+
+          if [ ! -f "$RUNNER_TEMP/apks-extracted/universal.apk" ]; then
+            echo "ERROR: universal.apk was not generated."
+            exit 1
+          fi
+
+          mkdir -p "$PROJECT_DIR/app/build/outputs/apk/release"
+
+          cp "$RUNNER_TEMP/apks-extracted/universal.apk" \
+            "$PROJECT_DIR/app/build/outputs/apk/release/kisan-mandi-universal.apk"
+
+          echo "Installable universal APK generated successfully."
+          ls -lh "$PROJECT_DIR/app/build/outputs/apk/release/kisan-mandi-universal.apk"
+
+      - name: Upload installable universal APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kisan-mandi-installable-apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/kisan-mandi-universal.apk
+          if-no-files-found: error
