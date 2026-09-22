@@ -205,7 +205,7 @@ jobs:
           name: kisan-mandi-signed-aab
           path: ${{ env.PROJECT_DIR }}/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
-                - name: Install bundletool 1.18.3
+      - name: Install bundletool 1.18.3
         shell: bash
         run: |
           curl -L --fail --retry 3 \
