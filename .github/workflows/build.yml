@@ -54,7 +54,15 @@ jobs:
 
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
           echo "Android project found at: $PROJECT_DIR"
-
+      - name: Update Android Gradle Plugin
+        shell: bash
+        run: |
+          echo "Updating Android Gradle Plugin to 8.10.1..."
+          find "$PROJECT_DIR" -type f \( -name "build.gradle" -o -name "build.gradle.kts" -o -name "settings.gradle" -o -name "settings.gradle.kts" \) -print0 |
+          while IFS= read -r -d '' file; do
+            sed -i 's/8\.7\.3/8.10.1/g' "$file"
+          done
+          echo "AGP update completed."
       - name: Force Google Play release configuration
         shell: bash
         run: |
@@ -89,7 +97,7 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.10.2'
+          gradle-version: '8.11.1'
 
       - name: Prepare upload signing key
         shell: bash
